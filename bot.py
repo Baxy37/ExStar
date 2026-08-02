@@ -27,7 +27,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, BigInteger, sel
 # ------------------- Переменные окружения -------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE")
 SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+ffrIKHeanSFmMDcy")
-WELCOME_PHOTO_URL = os.getenv("WELCOME_PHOTO_URL")  # Обязательно задайте!
+WELCOME_PHOTO_URL = os.getenv("WELCOME_PHOTO_URL")  # ОБЯЗАТЕЛЬНО задайте ссылку на фото!
 
 # ------------------- Логирование -------------------
 logging.basicConfig(level=logging.INFO)
@@ -80,7 +80,17 @@ def main_menu_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Обменять", callback_data="new_swap")
     builder.button(text="⚙️ Настроить кошелёк", callback_data="setup_wallet")
+    builder.button(text="🤝 Спонсоры", callback_data="sponsors")
     builder.button(text="💬 Поддержка", callback_data="support")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def sponsors_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⭐ Патрик Stars", url="https://t.me/patrickstarsrobot?start=6378686913")
+    builder.button(text="🦆 DuckyStars", url="https://t.me/duckystars_bot?start=r_fnvbu1u122wx")
+    builder.button(text="🏪 Portals Market", url="https://t.me/portals_market_bot/market?startapp=gift_019f8a58-1ea3-7a61-b47c-58ee6450df47_p0yi8t")
+    builder.button(text="🔙 Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -182,6 +192,26 @@ async def start_swap(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "setup_wallet")
 async def setup_wallet(callback: types.CallbackQuery):
     await callback.answer("⚙️ Настройка кошелька в разработке.", show_alert=True)
+
+@dp.callback_query(F.data == "sponsors")
+async def show_sponsors(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "🤝 Наши спонсоры:\n\n"
+        "⭐ Патрик Stars — получай звёзды бесплатно\n"
+        "🦆 DuckyStars — зарабатывай Stars за задания\n"
+        "🏪 Portals Market — торгуй подарками\n\n"
+        "Поддержи их — и они поддержат нас!",
+        reply_markup=sponsors_keyboard()
+    )
+
+@dp.callback_query(F.data == "back_to_menu")
+async def back_to_menu(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "🌟 Главное меню",
+        reply_markup=main_menu_keyboard()
+    )
 
 @dp.callback_query(F.data == "support")
 async def support(callback: types.CallbackQuery):
