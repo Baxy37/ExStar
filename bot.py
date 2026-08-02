@@ -40,12 +40,11 @@ if PHOTO_PATH.exists():
     logger.info(f"✅ Файл f.png найден по пути: {PHOTO_PATH.absolute()}, размер: {PHOTO_PATH.stat().st_size} байт")
 else:
     logger.error(f"❌ Файл f.png НЕ НАЙДЕН по пути: {PHOTO_PATH.absolute()}")
-    # Выведем список файлов в текущей папке для отладки
     try:
         files = list(CURRENT_DIR.iterdir())
-        logger.info(f"Содержимое папки {CURRENT_DIR.absolute()}: {[f.name for f in files]}")
+        logger.info(f"Содержимое папки: {[f.name for f in files]}")
     except Exception as e:
-        logger.error(f"Не удалось прочитать содержимое папки: {e}")
+        logger.error(f"Не удалось прочитать папку: {e}")
 
 # ------------------- База данных (SQLite) -------------------
 DATABASE_URL = "sqlite:///exstar.db"
@@ -73,6 +72,9 @@ Session = sessionmaker(bind=engine)
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+# ------------------- Кеш для предотвращения дублирования приветствий -------------------
+welcomed_users = set()
 
 # ------------------- FSM состояния -------------------
 class SwapStates(StatesGroup):
@@ -162,10 +164,20 @@ def get_order(order_hash):
 # ------------------- Обработчики команд -------------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    # Проверяем ещё раз наличие файла (на случай, если он появился после старта)
-    photo_path = Path(__file__).parent / "f.png"
-    logger.info(f"Обработка /start: ищем файл {photo_path.absolute()}, exists={photo_path.exists()}")
+    user_id = message.from_user.id
+    # Если уже приветствовали этого пользователя — просто показываем меню
+    if user_id in welcomed_users:
+        await message.answer(
+            "🌟 Добро пожаловать обратно! Используйте кнопки ниже.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
 
+    # Добавляем в кеш, чтобы больше не приветствовать повторно
+    welcomed_users.add(user_id)
+
+    # Проверяем наличие файла
+    photo_path = Path(__file__).parent / "f.png"
     if photo_path.exists():
         try:
             photo = FSInputFile(str(photo_path))
@@ -179,7 +191,7 @@ async def cmd_start(message: types.Message):
                 ),
                 reply_markup=main_menu_keyboard(),
             )
-            logger.info("Фото успешно отправлено")
+            logger.info(f"Приветствие с фото отправлено пользователю {user_id}")
             return
         except Exception as e:
             logger.error(f"Ошибка при отправке фото: {e}", exc_info=True)
@@ -194,10 +206,239 @@ async def cmd_start(message: types.Message):
         "Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
         reply_markup=main_menu_keyboard(),
     )
+    logger.info(f"Приветствие без фото отправлено пользователю {user_id}")
 
-# ------------------- Все остальные обработчики (без изменений) -------------------
-# ... (оставляем всё остальное как в предыдущей версии, чтобы не захламлять ответ)
-# Но для полноты я дам полный файл ниже.
+@dp.callback_query(F.data == "new_swap")
+async def start_swap(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_text(
+        "📥 Выберите способ пополнения:",
+        reply_markup=deposit_method_keyboard(),
+    )
+    await state.set_state(SwapStates.choose_deposit)
+
+@dp.callback_query(F.data == "setup_wallet")
+async def setup_wallet(callback: types.CallbackQuery):
+    await callback.answer("⚙️ Функция настройки кошелька пока в разработке.", show_alert=True)
+
+@dp.callback_query(F.data == "support")
+async def support(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(f"💬 Присоединяйтесь к чату поддержки: {SUPPORT_LINK}")
+
+@dp.callback_query(F.data == "cancel", StateFilter("*"))
+async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer("Операция отменена.")
+    await callback.message.edit_text(
+        "🌟 Главное меню",
+        reply_markup=main_menu_keyboard(),
+    )
+
+@dp.callback_query(F.data == "deposit_stars", StateFilter(SwapStates.choose_deposit))
+async def deposit_stars(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_text(
+        "⭐ Введите количество Звёзд, которое хотите обменять:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
+        ]]),
+    )
+    await state.set_state(SwapStates.enter_stars_amount)
+
+@dp.callback_query(F.data == "deposit_crypto", StateFilter(SwapStates.choose_deposit))
+async def deposit_crypto(callback: types.CallbackQuery):
+    await callback.answer("Пока поддерживается только обмен Звёзд → Криптовалюта / Рубли.", show_alert=True)
+
+@dp.message(F.text, StateFilter(SwapStates.enter_stars_amount))
+async def process_stars_amount(message: types.Message, state: FSMContext):
+    try:
+        amount = int(message.text)
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введите положительное целое число (количество Звёзд).")
+        return
+    await state.update_data(stars_amount=amount)
+    await message.answer(
+        "📊 Выберите актив, который хотите получить:",
+        reply_markup=asset_keyboard(),
+    )
+    await state.set_state(SwapStates.choose_asset)
+
+@dp.callback_query(F.data.startswith("asset_"), StateFilter(SwapStates.choose_asset))
+async def process_asset(callback: types.CallbackQuery, state: FSMContext):
+    asset_map = {
+        "asset_gram": "GRAM",
+        "asset_eth": "ETH",
+        "asset_usdt_erc20": "USDT (ERC-20)",
+        "asset_usdt_jetton": "USDT (Jetton)",
+        "asset_rub": "RUB",
+    }
+    asset = asset_map.get(callback.data)
+    if not asset:
+        await callback.answer("Неизвестный актив.")
+        return
+    await state.update_data(asset=asset)
+    await callback.answer()
+    if asset == "RUB":
+        await callback.message.edit_text(
+            "💳 Введите номер карты или номер телефона для перевода, а также название банка.\n"
+            "Пример: 1234 5678 9012 3456, Сбербанк\n"
+            "или: +7 900 123-45-67, Тинькофф",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
+            ]]),
+        )
+        await state.set_state(SwapStates.enter_rub_recipient)
+    else:
+        await callback.message.edit_text(
+            f"📤 Введите адрес кошелька для получения {asset}:\n"
+            "(отправьте текстовое сообщение с адресом)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
+            ]]),
+        )
+        await state.set_state(SwapStates.enter_wallet)
+
+@dp.message(F.text, StateFilter(SwapStates.enter_rub_recipient))
+async def process_rub_recipient(message: types.Message, state: FSMContext):
+    recipient_data = message.text.strip()
+    if len(recipient_data) < 5:
+        await message.answer("❌ Слишком короткие данные. Пожалуйста, введите номер карты/телефона и банк.")
+        return
+    await state.update_data(recipient=recipient_data)
+    data = await state.get_data()
+    stars = data.get("stars_amount")
+    asset = data.get("asset")
+    rate = 0.03
+    receive = round(stars * rate, 2)
+    order_hash = save_order(
+        user_id=message.from_user.id,
+        stars=stars,
+        asset=asset,
+        receive=receive,
+        recipient=recipient_data
+    )
+    await message.answer(
+        f"📝 Проверьте детали обмена:\n\n"
+        f"Вы отправляете: {stars} Звёзд\n"
+        f"Вы получаете: {receive} RUB\n"
+        f"На реквизиты: {recipient_data}\n\n"
+        f"Подтверждаете?",
+        reply_markup=confirm_keyboard(),
+    )
+    await state.update_data(order_hash=order_hash)
+    await state.set_state(SwapStates.confirm_swap)
+
+@dp.message(F.text, StateFilter(SwapStates.enter_wallet))
+async def process_wallet(message: types.Message, state: FSMContext):
+    wallet = message.text.strip()
+    if len(wallet) < 20:
+        await message.answer("❌ Адрес слишком короткий. Пожалуйста, введите корректный адрес.")
+        return
+    await state.update_data(wallet=wallet)
+    data = await state.get_data()
+    stars = data.get("stars_amount")
+    asset = data.get("asset")
+    if asset == "GRAM":
+        rate = 0.004
+    elif asset == "ETH":
+        rate = 0.0001
+    elif asset in ("USDT (ERC-20)", "USDT (Jetton)"):
+        rate = 0.01
+    else:
+        rate = 0.001
+    receive = round(stars * rate, 4)
+    recipient = wallet
+    order_hash = save_order(
+        user_id=message.from_user.id,
+        stars=stars,
+        asset=asset,
+        receive=receive,
+        recipient=recipient
+    )
+    await message.answer(
+        f"📝 Проверьте детали обмена:\n\n"
+        f"Вы отправляете: {stars} Звёзд\n"
+        f"Вы получаете: {receive} {asset}\n"
+        f"На кошелёк: {wallet[:6]}...{wallet[-6:]}\n\n"
+        f"Подтверждаете?",
+        reply_markup=confirm_keyboard(),
+    )
+    await state.update_data(order_hash=order_hash)
+    await state.set_state(SwapStates.confirm_swap)
+
+@dp.callback_query(F.data == "confirm_pay", StateFilter(SwapStates.confirm_swap))
+async def confirm_swap(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    stars = data.get("stars_amount")
+    asset = data.get("asset")
+    receive = data.get("receive") or 0
+    order_hash = data.get("order_hash")
+    if not order_hash:
+        await callback.answer("Ошибка: заказ не найден.")
+        return
+    prices = [LabeledPrice(label=f"{stars} Звёзд", amount=stars)]
+    await bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title="⭐ Обмен Звёзд на " + asset,
+        description=f"ExStar: {stars} Звёзд → {receive} {asset}",
+        payload=f"swap_{callback.from_user.id}_{order_hash}",
+        provider_token="",
+        currency="XTR",
+        prices=prices,
+        start_parameter="swap_start",
+        need_name=False,
+        need_phone_number=False,
+        need_email=False,
+        need_shipping_address=False,
+        is_flexible=False,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⭐ Оплатить", pay=True)
+        ]]),
+    )
+    await callback.answer("Счёт создан. Оплатите, нажав «Оплатить».")
+
+@dp.pre_checkout_query()
+async def pre_checkout_handler(pre_checkout: PreCheckoutQuery):
+    await pre_checkout.answer(ok=True)
+
+@dp.message(F.successful_payment)
+async def successful_payment_handler(message: types.Message, state: FSMContext):
+    payment = message.successful_payment
+    payload_parts = payment.invoice_payload.split("_")
+    if len(payload_parts) >= 3:
+        order_hash = payload_parts[2]
+    else:
+        await message.answer("❌ Не удалось определить заказ. Обратитесь в поддержку.")
+        return
+    update_order_paid(order_hash, payment.telegram_payment_charge_id)
+    order = get_order(order_hash)
+    if not order:
+        await message.answer("❌ Заказ не найден.")
+        return
+    await message.answer(
+        f"✅ Вы успешно совершили платёж в адрес ExStar на сумму ★{order.stars_amount}\n\n"
+        f"📋 Заявка на проверке\n\n"
+        f"Получили ваши {order.stars_amount} ★. По правилам Telegram (21-дневное окно возврата) крупные платежи ждут окончания окна перед выплатой в сети.\n\n"
+        f"Заказ #{order.order_hash}\n"
+        f"Оплачено {order.stars_amount} ★\n"
+        f"Статус: ждёт окно возврата\n\n"
+        f"Не хотите ждать? Добавьте стейк — он разблокирует мгновенный обмен на эквивалент стейка в Звёздах.",
+        reply_markup=after_payment_keyboard(order.order_hash),
+    )
+    await state.clear()
+
+@dp.callback_query(F.data.startswith("stake_"))
+async def stake_handler(callback: types.CallbackQuery):
+    order_hash = callback.data.split("_")[1]
+    await callback.answer(f"Функция стейкинга в разработке. Заказ #{order_hash}", show_alert=True)
+
+@dp.callback_query(F.data.startswith("card_"))
+async def card_handler(callback: types.CallbackQuery):
+    order_hash = callback.data.split("_")[1]
+    await callback.answer(f"Карточка заказа #{order_hash} будет доступна позже.", show_alert=True)
 
 # ------------------- Health‑сервер для Render -------------------
 class HealthHandler(BaseHTTPRequestHandler):
