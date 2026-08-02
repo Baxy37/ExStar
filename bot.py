@@ -3,6 +3,8 @@ import asyncio
 import logging
 import hashlib
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F, types
@@ -22,11 +24,11 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# ------------------- Переменные окружения (или значения по умолчанию) -------------------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE")
-SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+ffrIKHeanSFmMDcy")
+# ------------------- Переменные окружения -------------------
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuG0hDmLXqSIIv8N_3rj6kmbZqIKH8z1e")
+SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+fzIKHeanSFmDcvy")
 
-# ------------------- Настройка логирования -------------------
+# ------------------- Логирование -------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class Order(Base):
     asset = Column(String(50), nullable=False)
     receive_amount = Column(Float, nullable=False)
     recipient = Column(String(200))
-    status = Column(String(20), default="pending")  # pending, paid
+    status = Column(String(20), default="pending")
     payment_id = Column(String(100))
     order_hash = Column(String(20))
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -255,7 +257,7 @@ async def process_rub_recipient(message: types.Message, state: FSMContext):
     data = await state.get_data()
     stars = data.get("stars_amount")
     asset = data.get("asset")
-    rate = 0.03  # 1 Star = 0.03 RUB
+    rate = 0.03
     receive = round(stars * rate, 2)
     order_hash = save_order(
         user_id=message.from_user.id,
@@ -384,8 +386,26 @@ async def card_handler(callback: types.CallbackQuery):
     order_hash = callback.data.split("_")[1]
     await callback.answer(f"Карточка заказа #{order_hash} будет доступна позже.", show_alert=True)
 
-# ------------------- Запуск бота -------------------
+# ------------------- Health‑сервер для Render -------------------
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def run_health_server():
+    server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
+    server.serve_forever()
+
+# ------------------- Запуск бота и health‑сервера -------------------
 async def main():
+    # Запускаем health‑сервер в отдельном потоке (неблокирующем)
+    threading.Thread(target=run_health_server, daemon=True).start()
+    # Запускаем поллинг бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
