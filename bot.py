@@ -18,15 +18,15 @@ from aiogram.types import (
     LabeledPrice,
     PreCheckoutQuery,
     SuccessfulPayment,
+    FSInputFile,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, BigInteger
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # ------------------- Переменные окружения -------------------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuG0hDmLXqSIIv8N_3rj6kmbZqIKH8z1e")
-SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+fzIKHeanSFmDcvy")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE")
+SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+ffrIKHeanSFmMDcy")
 
 # ------------------- Логирование -------------------
 logging.basicConfig(level=logging.INFO)
@@ -147,12 +147,27 @@ def get_order(order_hash):
 # ------------------- Обработчики команд -------------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer(
-        "🌟 Добро пожаловать в ExStar!\n\n"
-        "Обменивайте GRAM, ETH, USDT, RUB и Telegram Stars — прямо в Telegram.\n\n"
-        "Нажмите «🔄 New swap» ниже, чтобы начать обмен. Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
-        reply_markup=main_menu_keyboard(),
-    )
+    # Отправляем фото с подписью
+    try:
+        photo = FSInputFile("f.png")
+        await message.answer_photo(
+            photo=photo,
+            caption=(
+                "🌟 Добро пожаловать в ExStar!\n\n"
+                "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
+                "Нажмите «🔄 New swap» ниже, чтобы начать обмен. Мы будем держать вас в курсе каждого шага здесь, в этом чате."
+            ),
+            reply_markup=main_menu_keyboard(),
+        )
+    except Exception as e:
+        # Если файл не найден, отправляем текст без фото
+        logger.warning(f"Не удалось отправить фото: {e}")
+        await message.answer(
+            "🌟 Добро пожаловать в ExStar!\n\n"
+            "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
+            "Нажмите «🔄 New swap» ниже, чтобы начать обмен. Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
+            reply_markup=main_menu_keyboard(),
+        )
 
 @dp.callback_query(F.data == "new_swap")
 async def start_swap(callback: types.CallbackQuery, state: FSMContext):
@@ -403,9 +418,7 @@ def run_health_server():
 
 # ------------------- Запуск бота и health‑сервера -------------------
 async def main():
-    # Запускаем health‑сервер в отдельном потоке (неблокирующем)
     threading.Thread(target=run_health_server, daemon=True).start()
-    # Запускаем поллинг бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
