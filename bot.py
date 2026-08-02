@@ -6,6 +6,7 @@ import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, StateFilter
@@ -147,27 +148,36 @@ def get_order(order_hash):
 # ------------------- Обработчики команд -------------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    try:
-        photo = FSInputFile("f.png")
-        await message.answer_photo(
-            photo=photo,
-            caption=(
-                "🌟 Добро пожаловать в ExStar!\n\n"
-                "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
-                "Нажмите «Обменять» ниже, чтобы начать обмен. "
-                "Мы будем держать вас в курсе каждого шага здесь, в этом чате."
-            ),
-            reply_markup=main_menu_keyboard(),
-        )
-    except Exception as e:
-        logger.warning(f"Не удалось отправить фото: {e}")
-        await message.answer(
-            "🌟 Добро пожаловать в ExStar!\n\n"
-            "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
-            "Нажмите «Обменять» ниже, чтобы начать обмен. "
-            "Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
-            reply_markup=main_menu_keyboard(),
-        )
+    # Определяем путь к файлу f.png (в той же папке, что и bot.py)
+    current_dir = Path(__file__).parent
+    photo_path = current_dir / "f.png"
+    
+    # Пытаемся отправить фото
+    if photo_path.exists():
+        try:
+            photo = FSInputFile(str(photo_path))
+            await message.answer_photo(
+                photo=photo,
+                caption=(
+                    "🌟 Добро пожаловать в ExStar!\n\n"
+                    "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
+                    "Нажмите «Обменять» ниже, чтобы начать обмен. "
+                    "Мы будем держать вас в курсе каждого шага здесь, в этом чате."
+                ),
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+        except Exception as e:
+            logger.error(f"Ошибка при отправке фото: {e}")
+    
+    # Если фото не найдено или ошибка — отправляем только текст
+    await message.answer(
+        "🌟 Добро пожаловать в ExStar!\n\n"
+        "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
+        "Нажмите «Обменять» ниже, чтобы начать обмен. "
+        "Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
+        reply_markup=main_menu_keyboard(),
+    )
 
 @dp.callback_query(F.data == "new_swap")
 async def start_swap(callback: types.CallbackQuery, state: FSMContext):
