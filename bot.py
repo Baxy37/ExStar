@@ -4,6 +4,7 @@ import logging
 import hashlib
 import time
 import threading
+from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
@@ -18,6 +19,7 @@ from aiogram.types import (
     LabeledPrice,
     PreCheckoutQuery,
     SuccessfulPayment,
+    FSInputFile,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -27,11 +29,17 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, BigInteger, sel
 # ------------------- Переменные окружения -------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE")
 SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+ffrIKHeanSFmMDcy")
-WELCOME_PHOTO_URL = os.getenv("WELCOME_PHOTO_URL")  # ОБЯЗАТЕЛЬНО задайте ссылку на фото!
 
 # ------------------- Логирование -------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ------------------- Путь к файлу фото -------------------
+PHOTO_FILE = Path(__file__).parent / "f.png"
+if PHOTO_FILE.exists():
+    logger.info(f"✅ Файл f.png найден, размер: {PHOTO_FILE.stat().st_size} байт")
+else:
+    logger.warning(f"❌ Файл f.png НЕ НАЙДЕН по пути {PHOTO_FILE.absolute()}")
 
 # ------------------- Асинхронная БД (aiosqlite) -------------------
 DATABASE_URL = "sqlite+aiosqlite:///exstar.db"
@@ -175,12 +183,19 @@ async def cmd_start(message: types.Message):
         "Мы будем держать вас в курсе каждого шага здесь, в этом чате."
     )
 
-    if WELCOME_PHOTO_URL:
+    # Отправляем фото из файла
+    if PHOTO_FILE.exists():
         try:
-            await message.answer_photo(photo=WELCOME_PHOTO_URL, caption=caption, reply_markup=main_menu_keyboard())
+            photo = FSInputFile(str(PHOTO_FILE))
+            await message.answer_photo(photo=photo, caption=caption, reply_markup=main_menu_keyboard())
+            logger.info(f"Приветствие с фото отправлено пользователю {user_id}")
             return
         except Exception as e:
-            logger.error(f"Ошибка фото: {e}")
+            logger.error(f"Ошибка при отправке фото из файла: {e}", exc_info=True)
+    else:
+        logger.warning("Файл f.png не найден, отправляем только текст")
+
+    # Если фото не отправилось — отправляем текст
     await message.answer(caption, reply_markup=main_menu_keyboard())
 
 @dp.callback_query(F.data == "new_swap")
@@ -208,10 +223,7 @@ async def show_sponsors(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(
-        "🌟 Главное меню",
-        reply_markup=main_menu_keyboard()
-    )
+    await callback.message.edit_text("🌟 Главное меню", reply_markup=main_menu_keyboard())
 
 @dp.callback_query(F.data == "support")
 async def support(callback: types.CallbackQuery):
