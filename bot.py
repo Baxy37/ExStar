@@ -183,7 +183,6 @@ async def cmd_start(message: types.Message):
         "Мы будем держать вас в курсе каждого шага здесь, в этом чате."
     )
 
-    # Отправляем фото из файла
     if PHOTO_FILE.exists():
         try:
             photo = FSInputFile(str(PHOTO_FILE))
@@ -191,17 +190,15 @@ async def cmd_start(message: types.Message):
             logger.info(f"Приветствие с фото отправлено пользователю {user_id}")
             return
         except Exception as e:
-            logger.error(f"Ошибка при отправке фото из файла: {e}", exc_info=True)
-    else:
-        logger.warning("Файл f.png не найден, отправляем только текст")
-
-    # Если фото не отправилось — отправляем текст
+            logger.error(f"Ошибка при отправке фото: {e}")
     await message.answer(caption, reply_markup=main_menu_keyboard())
 
+# ------------------- Обработчики callback (с удалением старых сообщений) -------------------
 @dp.callback_query(F.data == "new_swap")
 async def start_swap(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_text("📥 Выберите способ пополнения:", reply_markup=deposit_method_keyboard())
+    await callback.message.delete()
+    await callback.message.answer("📥 Выберите способ пополнения:", reply_markup=deposit_method_keyboard())
     await state.set_state(SwapStates.choose_deposit)
 
 @dp.callback_query(F.data == "setup_wallet")
@@ -211,7 +208,8 @@ async def setup_wallet(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "sponsors")
 async def show_sponsors(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(
+    await callback.message.delete()
+    await callback.message.answer(
         "🤝 Наши спонсоры:\n\n"
         "⭐ Патрик Stars — получай звёзды бесплатно\n"
         "🦆 DuckyStars — зарабатывай Stars за задания\n"
@@ -223,7 +221,8 @@ async def show_sponsors(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("🌟 Главное меню", reply_markup=main_menu_keyboard())
+    await callback.message.delete()
+    await callback.message.answer("🌟 Главное меню", reply_markup=main_menu_keyboard())
 
 @dp.callback_query(F.data == "support")
 async def support(callback: types.CallbackQuery):
@@ -234,12 +233,14 @@ async def support(callback: types.CallbackQuery):
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено.")
-    await callback.message.edit_text("🌟 Главное меню", reply_markup=main_menu_keyboard())
+    await callback.message.delete()
+    await callback.message.answer("🌟 Главное меню", reply_markup=main_menu_keyboard())
 
 @dp.callback_query(F.data == "deposit_stars", StateFilter(SwapStates.choose_deposit))
 async def deposit_stars(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_text(
+    await callback.message.delete()
+    await callback.message.answer(
         "⭐ Введите количество Звёзд:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")]])
     )
@@ -274,14 +275,15 @@ async def process_asset(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.update_data(asset=asset)
     await callback.answer()
+    await callback.message.delete()
     if asset == "RUB":
-        await callback.message.edit_text(
+        await callback.message.answer(
             "💳 Введите номер карты/телефона и банк.\nПример: 1234 5678 9012 3456, Сбербанк",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")]])
         )
         await state.set_state(SwapStates.enter_rub_recipient)
     else:
-        await callback.message.edit_text(
+        await callback.message.answer(
             f"📤 Введите адрес кошелька для {asset}:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")]])
         )
@@ -390,7 +392,6 @@ def run_health():
     server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
     server.serve_forever()
 
-# ------------------- Запуск -------------------
 async def main():
     await init_db()
     threading.Thread(target=run_health, daemon=True).start()
