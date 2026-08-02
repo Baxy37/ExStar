@@ -68,20 +68,20 @@ class SwapStates(StatesGroup):
     enter_rub_recipient = State()
     confirm_swap = State()
 
-# ------------------- Клавиатуры -------------------
+# ------------------- Клавиатуры (все на русском) -------------------
 def main_menu_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔄 New swap", callback_data="new_swap")
-    builder.button(text="⚙️ Настроить кошелек", callback_data="setup_wallet")
+    builder.button(text="🔄 Обменять", callback_data="new_swap")
+    builder.button(text="⚙️ Настроить кошелёк", callback_data="setup_wallet")
     builder.button(text="💬 Поддержка", callback_data="support")
     builder.adjust(1)
     return builder.as_markup()
 
 def deposit_method_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="⭐ Stars", callback_data="deposit_stars")
-    builder.button(text="💎 Crypto", callback_data="deposit_crypto")
-    builder.button(text="✖ Cancel", callback_data="cancel")
+    builder.button(text="⭐ Звёзды", callback_data="deposit_stars")
+    builder.button(text="💎 Криптовалюта", callback_data="deposit_crypto")
+    builder.button(text="✖ Отмена", callback_data="cancel")
     builder.adjust(2)
     return builder.as_markup()
 
@@ -92,14 +92,14 @@ def asset_keyboard():
     builder.button(text="USDT (ERC-20)", callback_data="asset_usdt_erc20")
     builder.button(text="USDT (Jetton)", callback_data="asset_usdt_jetton")
     builder.button(text="RUB", callback_data="asset_rub")
-    builder.button(text="✖ Cancel", callback_data="cancel")
+    builder.button(text="✖ Отмена", callback_data="cancel")
     builder.adjust(2)
     return builder.as_markup()
 
 def confirm_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Подтвердить", callback_data="confirm_pay")
-    builder.button(text="✖ Cancel", callback_data="cancel")
+    builder.button(text="✖ Отмена", callback_data="cancel")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -147,7 +147,6 @@ def get_order(order_hash):
 # ------------------- Обработчики команд -------------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    # Отправляем фото с подписью
     try:
         photo = FSInputFile("f.png")
         await message.answer_photo(
@@ -155,17 +154,18 @@ async def cmd_start(message: types.Message):
             caption=(
                 "🌟 Добро пожаловать в ExStar!\n\n"
                 "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
-                "Нажмите «🔄 New swap» ниже, чтобы начать обмен. Мы будем держать вас в курсе каждого шага здесь, в этом чате."
+                "Нажмите «Обменять» ниже, чтобы начать обмен. "
+                "Мы будем держать вас в курсе каждого шага здесь, в этом чате."
             ),
             reply_markup=main_menu_keyboard(),
         )
     except Exception as e:
-        # Если файл не найден, отправляем текст без фото
         logger.warning(f"Не удалось отправить фото: {e}")
         await message.answer(
             "🌟 Добро пожаловать в ExStar!\n\n"
             "Обменяйте звёзды 🌟 на GRAM, ETH, USDT и RUB — прямо в Telegram.\n\n"
-            "Нажмите «🔄 New swap» ниже, чтобы начать обмен. Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
+            "Нажмите «Обменять» ниже, чтобы начать обмен. "
+            "Мы будем держать вас в курсе каждого шага здесь, в этом чате.",
             reply_markup=main_menu_keyboard(),
         )
 
@@ -173,14 +173,14 @@ async def cmd_start(message: types.Message):
 async def start_swap(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
-        "📥 Choose how to deposit:",
+        "📥 Выберите способ пополнения:",
         reply_markup=deposit_method_keyboard(),
     )
     await state.set_state(SwapStates.choose_deposit)
 
 @dp.callback_query(F.data == "setup_wallet")
 async def setup_wallet(callback: types.CallbackQuery):
-    await callback.answer("Функция настройки кошелька пока в разработке.", show_alert=True)
+    await callback.answer("⚙️ Функция настройки кошелька пока в разработке.", show_alert=True)
 
 @dp.callback_query(F.data == "support")
 async def support(callback: types.CallbackQuery):
@@ -200,16 +200,16 @@ async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
 async def deposit_stars(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
-        "⭐ Введите количество Stars, которое хотите обменять:",
+        "⭐ Введите количество Звёзд, которое хотите обменять:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✖ Cancel", callback_data="cancel")
+            InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
         ]]),
     )
     await state.set_state(SwapStates.enter_stars_amount)
 
 @dp.callback_query(F.data == "deposit_crypto", StateFilter(SwapStates.choose_deposit))
 async def deposit_crypto(callback: types.CallbackQuery):
-    await callback.answer("Пока поддерживается только обмен Stars → Криптовалюта / Рубли.", show_alert=True)
+    await callback.answer("Пока поддерживается только обмен Звёзд → Криптовалюта / Рубли.", show_alert=True)
 
 @dp.message(F.text, StateFilter(SwapStates.enter_stars_amount))
 async def process_stars_amount(message: types.Message, state: FSMContext):
@@ -218,7 +218,7 @@ async def process_stars_amount(message: types.Message, state: FSMContext):
         if amount <= 0:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите положительное целое число (количество Stars).")
+        await message.answer("❌ Пожалуйста, введите положительное целое число (количество Звёзд).")
         return
     await state.update_data(stars_amount=amount)
     await message.answer(
@@ -248,7 +248,7 @@ async def process_asset(callback: types.CallbackQuery, state: FSMContext):
             "Пример: 1234 5678 9012 3456, Сбербанк\n"
             "или: +7 900 123-45-67, Тинькофф",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✖ Cancel", callback_data="cancel")
+                InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
             ]]),
         )
         await state.set_state(SwapStates.enter_rub_recipient)
@@ -257,7 +257,7 @@ async def process_asset(callback: types.CallbackQuery, state: FSMContext):
             f"📤 Введите адрес кошелька для получения {asset}:\n"
             "(отправьте текстовое сообщение с адресом)",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✖ Cancel", callback_data="cancel")
+                InlineKeyboardButton(text="✖ Отмена", callback_data="cancel")
             ]]),
         )
         await state.set_state(SwapStates.enter_wallet)
@@ -283,7 +283,7 @@ async def process_rub_recipient(message: types.Message, state: FSMContext):
     )
     await message.answer(
         f"📝 Проверьте детали обмена:\n\n"
-        f"Вы отправляете: {stars} Stars\n"
+        f"Вы отправляете: {stars} Звёзд\n"
         f"Вы получаете: {receive} RUB\n"
         f"На реквизиты: {recipient_data}\n\n"
         f"Подтверждаете?",
@@ -321,7 +321,7 @@ async def process_wallet(message: types.Message, state: FSMContext):
     )
     await message.answer(
         f"📝 Проверьте детали обмена:\n\n"
-        f"Вы отправляете: {stars} Stars\n"
+        f"Вы отправляете: {stars} Звёзд\n"
         f"Вы получаете: {receive} {asset}\n"
         f"На кошелёк: {wallet[:6]}...{wallet[-6:]}\n\n"
         f"Подтверждаете?",
@@ -340,11 +340,11 @@ async def confirm_swap(callback: types.CallbackQuery, state: FSMContext):
     if not order_hash:
         await callback.answer("Ошибка: заказ не найден.")
         return
-    prices = [LabeledPrice(label=f"{stars} Stars", amount=stars)]
+    prices = [LabeledPrice(label=f"{stars} Звёзд", amount=stars)]
     await bot.send_invoice(
         chat_id=callback.from_user.id,
-        title="⭐ Обмен Stars на " + asset,
-        description=f"ExStar: {stars} Stars → {receive} {asset}",
+        title="⭐ Обмен Звёзд на " + asset,
+        description=f"ExStar: {stars} Звёзд → {receive} {asset}",
         payload=f"swap_{callback.from_user.id}_{order_hash}",
         provider_token="",
         currency="XTR",
@@ -356,10 +356,10 @@ async def confirm_swap(callback: types.CallbackQuery, state: FSMContext):
         need_shipping_address=False,
         is_flexible=False,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="⭐ Pay", pay=True)
+            InlineKeyboardButton(text="⭐ Оплатить", pay=True)
         ]]),
     )
-    await callback.answer("Счёт создан. Оплатите, нажав «Pay».")
+    await callback.answer("Счёт создан. Оплатите, нажав «Оплатить».")
 
 @dp.pre_checkout_query()
 async def pre_checkout_handler(pre_checkout: PreCheckoutQuery):
@@ -386,7 +386,7 @@ async def successful_payment_handler(message: types.Message, state: FSMContext):
         f"Заказ #{order.order_hash}\n"
         f"Оплачено {order.stars_amount} ★\n"
         f"Статус: ждёт окно возврата\n\n"
-        f"Не хотите ждать? Добавьте стейк — он разблокирует мгновенный обмен на эквивалент стейка в Stars.",
+        f"Не хотите ждать? Добавьте стейк — он разблокирует мгновенный обмен на эквивалент стейка в Звёздах.",
         reply_markup=after_payment_keyboard(order.order_hash),
     )
     await state.clear()
