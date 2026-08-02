@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import hashlib
@@ -21,12 +22,13 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# ------------------- Переменные окружения (или значения по умолчанию) -------------------
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE")
+SUPPORT_LINK = os.getenv("SUPPORT_LINK", "https://t.me/+ffrIKHeanSFmMDcy")
+
 # ------------------- Настройка логирования -------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# ------------------- Токен бота (ваш) -------------------
-BOT_TOKEN = "8942021486:AAGuGoMDwLXqSIIv8N_3rj6kmbZqIKH8riE"
 
 # ------------------- База данных (SQLite) -------------------
 DATABASE_URL = "sqlite:///exstar.db"
@@ -166,7 +168,7 @@ async def setup_wallet(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "support")
 async def support(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer("💬 Присоединяйтесь к чату поддержки: https://t.me/+ffrIKHeanSFmMDcy")
+    await callback.message.answer(f"💬 Присоединяйтесь к чату поддержки: {SUPPORT_LINK}")
 
 @dp.callback_query(F.data == "cancel", StateFilter("*"))
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
